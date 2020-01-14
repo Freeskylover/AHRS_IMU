@@ -1,12 +1,14 @@
+#include <iostream>
+// ros
 #include <ros/ros.h>
 #include <serial/serial.h>
-#include <iostream>
-#include <iomanip>
-#include <memory>
 #include <sensor_msgs/Imu.h>
+//for shared ptr
+#include <memory>
+//for matrix
 #include <Eigen/Core>
 #include <Eigen/Geometry>
-#include <Eigen/Dense>
+
 
 #define GRAVITY_ACCELERATION 9.81
 #define PAYLOAD_OFFSET 6
@@ -36,7 +38,6 @@ public:
 
     virtual void pulishSensorMsg(ros::Publisher IMU_pub)
     {
-
     }
 
 
@@ -139,8 +140,8 @@ public :
 };
 
 
-uint8_t   Stop[9] = {0xaa , 0x55 , 0x00 , 0x00 , 0x07 , 0x00 , 0x81 , 0x88 , 0x00};
-uint8_t SendData[9] = {0xaa , 0x55 , 0x00 , 0x00 , 0x07 , 0x00 , 0x81 , 0x88 , 0x00};
+uint8_t   SendData[9] = {0xaa , 0x55 , 0x00 , 0x00 , 0x07 , 0x00 , 0x81 , 0x88 , 0x00};
+uint8_t Stop[9] = {0xaa , 0x55 , 0x00 , 0x00 , 0x07 , 0x00 , 0xFE , 0x05 , 0x01};
 
 
 class SerialReader
@@ -152,7 +153,7 @@ public:
     {
         int time;
         private_nh.param<int>("Timeout", time, 100);
-        private_nh.param<std::string>("SerialName", PortName, "/dev/ttyUSB1");
+        private_nh.param<std::string>("SerialName", PortName, "/dev/ttyUSB0");
         private_nh.param<int>("BaudRate", buadRate, 115200);
         timeout = std::make_shared<serial::Timeout>(serial::Timeout::simpleTimeout(time));
         sp.setTimeout(*timeout);
@@ -188,6 +189,8 @@ public:
             return false;
         }
         sp.read(buffer,60);
+
+        std::cout<<std::endl<<std::endl;
         imuData->getDataFromBuff(buffer);
         return true;
     }
@@ -198,6 +201,7 @@ public:
         {
             sp.write(Stop, sizeof(Stop));
             isInitial = false ;
+            ROS_ERROR_STREAM("success to stop!");
         }
         catch (serial::IOException &e)
         {
@@ -210,8 +214,7 @@ public:
 
     bool start()
     {
-        stop();
-
+        //ros::Duration(5 ).sleep() ;
         try
         {
             sp.write(SendData, sizeof(SendData));
@@ -223,11 +226,14 @@ public:
         }
 
         // judge if reply from IMU has been transmitted.
-        if(sp.available()>=500)
+        while(1)
         {
+            if(sp.available()<500)
+                continue;
             uint8_t bufferTmp[500];
-            sp.read(buffer, sizeof(bufferTmp));
+            sp.read(bufferTmp, sizeof(bufferTmp));
             ROS_INFO("Success to transmit sendData command!");
+            break;
         }
 
         //alignment that putting  Header  first byte the next time you read.
@@ -238,10 +244,11 @@ public:
             if(buffer[i+1] == 0xaa && buffer[i+2] == 0x55)
             {
                 sp.read(buffer,i+1);
+                isInitial = true;
+                ROS_INFO("Intialized completed!");
+                break;
             }
-            isInitial = true;
-            ROS_INFO("Intialized completed!");
-            break;
+
         }
         return true;
     }
@@ -252,13 +259,12 @@ public:
     }
 
 
-
-
     static SerialReader *  getInstance()
     {
         if(serialReaderInstance == nullptr)
         {
             serialReaderInstance = new SerialReader();
+            return serialReaderInstance ;
         }
         else
         {
@@ -270,7 +276,6 @@ public:
 private:
     //param used for set serial
     serial::Serial sp;
-
     std::shared_ptr<serial::Timeout> timeout;
     std::string PortName;
     int buadRate ;
@@ -278,7 +283,7 @@ private:
     //    The singleton pattern
     static SerialReader * serialReaderInstance;
 
-    uint8_t buffer[60];
+    uint8_t buffer[60]; //used for sto
     bool isInitial = false;
 };
 
@@ -308,7 +313,9 @@ int main(int argc, char **argv)
     }
 
     //close serial
+    serial->stop();
     serial->close();
+
 
     return 0;
 }
