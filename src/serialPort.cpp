@@ -12,6 +12,7 @@
 
 #define GRAVITY_ACCELERATION 9.81
 #define PAYLOAD_OFFSET 6
+#define PI 3.1415926535898
 
 class ImuData
 {
@@ -49,6 +50,8 @@ public:
     uint16_t MessageLength;
 
     uint16_t CheckSum;
+
+    bool bPublishRelativeRotation = true;
 };
 
 
@@ -86,14 +89,36 @@ public:
 
     void pulishSensorMsg(ros::Publisher IMU_pub) override final
     {
+        static Eigen::Quaterniond FirstRotation;
+        static bool isFirst = true;
+
         sensor_msgs::Imu IMU_Msg;
         IMU_Msg.header.stamp = ros::Time::now() ;
         IMU_Msg.header.frame_id = "imu" ;
 
-        Eigen::AngleAxisd roll(Roll /1000.0, Eigen::Vector3d::UnitX());
-        Eigen::AngleAxisd pitch(Pitch /1000.0, Eigen::Vector3d::UnitY());
-        Eigen::AngleAxisd yaw(Heading /1000.0, Eigen::Vector3d::UnitZ());
+        Eigen::AngleAxisd roll(Roll /1000.0 * PI /180 , Eigen::Vector3d::UnitY());
+        Eigen::AngleAxisd pitch(Pitch /1000.0 * PI /180, Eigen::Vector3d::UnitX());
+        Eigen::AngleAxisd yaw(-Heading /1000.0 * PI /180, Eigen::Vector3d::UnitZ());
         Eigen::Quaterniond Rotation =  yaw * pitch * roll ;
+
+        if(isFirst)
+        {
+            FirstRotation = Rotation;
+            isFirst = false ;
+        }
+
+        if(bPublishRelativeRotation)
+        {
+            Rotation = FirstRotation.inverse() * Rotation ;
+            Eigen::Vector3d euler = Rotation.toRotationMatrix().eulerAngles(2, 0, 1);
+            Eigen::Vector3d first_euler = FirstRotation.toRotationMatrix().eulerAngles(2,0,1);
+
+//            std::cout<< "current : "<< euler.transpose() / 3.1415926 * 180;
+//            std::cout<<"--"<<"first : " << first_euler.transpose()/ 3.1415926 * 180 ;
+
+        }
+//        std::cout<<"-----------"<<-Heading/1000.0 + 360 <<"  "<< Pitch /1000. << "  " << Roll / 1000. <<std::endl;
+
         IMU_Msg.orientation.x = Rotation.x() ;
         IMU_Msg.orientation.y = Rotation.y() ;
         IMU_Msg.orientation.z = Rotation.z() ;
@@ -140,8 +165,10 @@ public :
 };
 
 
-uint8_t   SendData[9] = {0xaa , 0x55 , 0x00 , 0x00 , 0x07 , 0x00 , 0x81 , 0x88 , 0x00};
-uint8_t Stop[9] = {0xaa , 0x55 , 0x00 , 0x00 , 0x07 , 0x00 , 0xFE , 0x05 , 0x01};
+uint8_t  SendData[9] = {0xaa , 0x55 , 0x00 , 0x00 , 0x07 , 0x00 , 0x81 , 0x88 , 0x00};
+uint8_t  Stop[9]     = {0xaa , 0x55 , 0x00 , 0x00 , 0x07 , 0x00 , 0xFE , 0x05 , 0x01};
+
+
 
 
 class SerialReader
@@ -153,7 +180,7 @@ public:
     {
         int time;
         private_nh.param<int>("Timeout", time, 100);
-        private_nh.param<std::string>("SerialName", PortName, "/dev/ttyUSB0");
+        private_nh.param<std::string>("SerialName", PortName, "/dev/ttyUSB1");
         private_nh.param<int>("BaudRate", buadRate, 115200);
         timeout = std::make_shared<serial::Timeout>(serial::Timeout::simpleTimeout(time));
         sp.setTimeout(*timeout);
@@ -190,7 +217,6 @@ public:
         }
         sp.read(buffer,60);
 
-        std::cout<<std::endl<<std::endl;
         imuData->getDataFromBuff(buffer);
         return true;
     }
@@ -201,7 +227,7 @@ public:
         {
             sp.write(Stop, sizeof(Stop));
             isInitial = false ;
-            ROS_ERROR_STREAM("success to stop!");
+            ROS_INFO("success to stop!");
         }
         catch (serial::IOException &e)
         {
@@ -214,7 +240,7 @@ public:
 
     bool start()
     {
-        //ros::Duration(5 ).sleep() ;
+        stop();
         try
         {
             sp.write(SendData, sizeof(SendData));
@@ -257,6 +283,8 @@ public:
     {
         sp.close();
     }
+
+
 
 
     static SerialReader *  getInstance()
@@ -304,7 +332,8 @@ int main(int argc, char **argv)
     ros::Rate loop_rate(100);
     ImuData * imuData = new HRData();
 
-    // publis sensor message
+
+    // publish sensor message
     while (ros::ok())
     {
         serial->readData(imuData);
