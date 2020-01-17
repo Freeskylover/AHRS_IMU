@@ -98,7 +98,16 @@ public:
 
         Eigen::AngleAxisd roll(Roll /1000.0 * PI /180 , Eigen::Vector3d::UnitY());
         Eigen::AngleAxisd pitch(Pitch /1000.0 * PI /180, Eigen::Vector3d::UnitX());
-        Eigen::AngleAxisd yaw(-Heading /1000.0 * PI /180, Eigen::Vector3d::UnitZ());
+        double tmpYaw =  Heading /1000.0 ;
+        if(tmpYaw >= 0 && tmpYaw < 180)
+        {
+            tmpYaw = -tmpYaw ;
+        } else
+        {
+            tmpYaw = -tmpYaw + 360 ;
+        }
+
+        Eigen::AngleAxisd yaw(tmpYaw * PI /180, Eigen::Vector3d::UnitZ());
         Eigen::Quaterniond Rotation =  yaw * pitch * roll ;
 
         if(isFirst)
@@ -113,11 +122,11 @@ public:
             Eigen::Vector3d euler = Rotation.toRotationMatrix().eulerAngles(2, 0, 1);
             Eigen::Vector3d first_euler = FirstRotation.toRotationMatrix().eulerAngles(2,0,1);
 
-//            std::cout<< "current : "<< euler.transpose() / 3.1415926 * 180;
-//            std::cout<<"--"<<"first : " << first_euler.transpose()/ 3.1415926 * 180 ;
+            std::cout<< "current : "<< euler.transpose() / 3.1415926 * 180;
+            std::cout<<"--"<<"first : " << first_euler.transpose()/ 3.1415926 * 180 ;
 
         }
-//        std::cout<<"-----------"<<-Heading/1000.0 + 360 <<"  "<< Pitch /1000. << "  " << Roll / 1000. <<std::endl;
+        std::cout<<" -----------  "<< tmpYaw <<"  "<< Pitch /1000. << "  " << Roll / 1000. <<std::endl;
 
         IMU_Msg.orientation.x = Rotation.x() ;
         IMU_Msg.orientation.y = Rotation.y() ;
@@ -128,9 +137,9 @@ public:
         IMU_Msg.linear_acceleration.y = AccY * GRAVITY_ACCELERATION / 1e6 ;
         IMU_Msg.linear_acceleration.z = AccZ * GRAVITY_ACCELERATION / 1e6  ;
 
-        IMU_Msg.angular_velocity.x = GyroX / 1e5 ;
-        IMU_Msg.angular_velocity.y = GyroY / 1e5 ;
-        IMU_Msg.angular_velocity.z = GyroZ / 1e5 ;
+        IMU_Msg.angular_velocity.x = GyroX / 1e5 * 3.14 / 180 ;
+        IMU_Msg.angular_velocity.y = GyroY / 1e5 * 3.14 / 180 ;
+        IMU_Msg.angular_velocity.z = GyroZ / 1e5 * 3.14 / 180 ;
 
         IMU_pub.publish<sensor_msgs::Imu>(IMU_Msg);
     }
@@ -190,6 +199,11 @@ public:
 
     bool open()
     {
+        if(sp.isOpen())
+        {
+            ROS_ERROR_STREAM("Port is open !");
+            sp.close();
+        }
         try
         {
             sp.open();    //打开串口

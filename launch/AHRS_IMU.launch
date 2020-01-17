@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="AHRS_Imu" type="AHRS_Imu" name="AHRS_Imu" output="screen">
+    <param name="SerialName" value="/dev/ttyUSB0" />
+  </node>
+</launch>
