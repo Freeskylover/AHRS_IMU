@@ -108,8 +108,8 @@ public:
         }
 
         Eigen::AngleAxisd yaw(tmpYaw * PI /180, Eigen::Vector3d::UnitZ());
-        Eigen::Quaterniond Rotation =  yaw * pitch * roll ;
-
+//        Eigen::Quaterniond Rotation =  yaw * pitch * roll ;
+        Eigen::Quaterniond Rotation (getRotationMatrix());
         if(isFirst)
         {
             FirstRotation = Rotation;
@@ -122,11 +122,11 @@ public:
             Eigen::Vector3d euler = Rotation.toRotationMatrix().eulerAngles(2, 0, 1);
             Eigen::Vector3d first_euler = FirstRotation.toRotationMatrix().eulerAngles(2,0,1);
 
-            std::cout<< "current : "<< euler.transpose() / 3.1415926 * 180;
-            std::cout<<"--"<<"first : " << first_euler.transpose()/ 3.1415926 * 180 ;
+//            std::cout<< "current : "<< euler.transpose() / 3.1415926 * 180;
+//            std::cout<<"--"<<"first : " << first_euler.transpose()/ 3.1415926 * 180 ;
 
         }
-        std::cout<<" -----------  "<< tmpYaw <<"  "<< Pitch /1000. << "  " << Roll / 1000. <<std::endl;
+//        std::cout<<" -----------  "<< tmpYaw <<"  "<< Pitch /1000. << "  " << Roll / 1000. <<std::endl;
 
         IMU_Msg.orientation.x = Rotation.x() ;
         IMU_Msg.orientation.y = Rotation.y() ;
@@ -142,6 +142,28 @@ public:
         IMU_Msg.angular_velocity.z = GyroZ / 1e5 * 3.14 / 180 ;
 
         IMU_pub.publish<sensor_msgs::Imu>(IMU_Msg);
+    }
+
+    Eigen::Matrix3d getRotationMatrix()
+    {
+        Eigen::Matrix3d RotationMatrix;
+        double heading = Heading / 1000. * PI / 180 ;
+        double pitch = Pitch / 1000.  * PI / 180;
+        double roll = Roll / 1000.  * PI / 180;
+
+        double c11 = cos(heading) * cos(roll) + sin(heading) * sin(roll) * sin(pitch) ;
+        double c12 = sin(heading) * cos(pitch) ;
+        double c13 = cos(heading) * sin(roll) - sin(heading) * cos(roll) * sin(pitch) ;
+
+        double c21 = -sin(heading) * cos(roll) + cos(heading) * sin(roll) * sin (pitch);
+        double c22 = cos(heading) * cos(pitch) ;
+        double c23 = -sin(heading) * sin(roll) - cos(heading) * cos(roll) * sin(pitch) ;
+
+        double c31 = -cos(pitch) * sin(roll) ;
+        double c32 = sin(pitch) ;
+        double c33 = cos(pitch) * cos(roll) ;
+
+        RotationMatrix<<c11,c12,c13,c21,c22,c23,c31,c32,c33;
     }
 
 public :
